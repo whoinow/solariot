@@ -42,7 +42,7 @@ print ("Load config %s" % config.model)
 
 # SMA datatypes and their register lengths
 # S = Signed Number, U = Unsigned Number, STR = String
-sma_moddatatype = {
+schneider_moddatatype = sma_moddatatype = {
   'S16':1,
   'U16':1,
   'S32':2,
@@ -58,11 +58,12 @@ modmap = __import__(modmap_file)
 
 print ("Load ModbusTcpClient")
 
-client = ModbusTcpClient(config.inverter_ip, 
+client = ModbusTcpClient(host=config.inverter_ip, 
                          timeout=config.timeout,
                          RetryOnEmpty=True,
                          retries=3,
-                         port=config.inverter_port)
+                         port=config.inverter_port,
+                         auto_open=True)
 print("Connect")
 client.connect()
 
@@ -107,6 +108,7 @@ def load_registers(type,start,COUNT=100):
         inverter[modmap.holding_register.get(str(run))] = rr.registers[num]
   except Exception as err:
     print("[ERROR] %s" % err)
+    return False
 
 ## function for polling data from the target and triggering writing to log file if set
 #
@@ -132,7 +134,7 @@ def load_sma_register(registers):
       thisdate = str(datetime.datetime.now()).partition('.')[0]
       thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
       print( thiserrormessage)
-      return  ## prevent further execution of this function
+      return False ## prevent further execution of this function
     
     message = BinaryPayloadDecoder.fromRegisters(received.registers, endian=Endian.Big)
     ## provide the correct result depending on the defined datatype
@@ -172,6 +174,73 @@ def load_sma_register(registers):
   
   # Add timestamp
   inverter["00000 - Timestamp"] = str(datetime.datetime.now()).partition('.')[0]
+  return True
+
+def load_schneider_register(registers):
+  from pymodbus.payload import BinaryPayloadDecoder
+  from pymodbus.constants import Endian
+  import datetime
+
+  ## request each register from datasets, omit first row which contains only column headers
+  for thisrow in registers:
+    name = thisrow[0]
+    startPos = thisrow[1]
+    type = thisrow[2]
+    format = thisrow[3]
+    print("Modbus Request: Name: %s, Address: %s, Type: %s, Format: %s" % (name, hex(startPos), type, format))
+    
+    ## if the connection is somehow not possible (e.g. target not responding)
+    #  show a error message instead of excepting and stopping
+    
+    try:
+      received = client.read_holding_registers(address=startPos,
+                                             count=schneider_moddatatype[type],
+                                              unit=config.slave)
+    except:
+      thisdate = str(datetime.datetime.now()).partition('.')[0]
+      thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
+      print( thiserrormessage)
+      return False ## prevent further execution of this function
+    
+    message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Little)
+    ## provide the correct result depending on the defined datatype
+    if type == 'S32':
+      interpreted = message.decode_32bit_int()
+    elif type == 'U32':
+      interpreted = message.decode_32bit_uint()
+    elif type == 'U64':
+      interpreted = message.decode_64bit_uint()
+    elif type == 'STR16':
+      interpreted = message.decode_string(16)
+    elif type == 'STR32':
+      interpreted = message.decode_string(32)
+    elif type == 'S16':
+      interpreted = message.decode_16bit_int()
+    elif type == 'U16':
+      interpreted = message.decode_16bit_uint()
+    else: ## if no data type is defined do raw interpretation of the delivered data
+      interpreted = message.decode_16bit_uint()
+    
+    ## check for "None" data before doing anything else
+    if ((interpreted == MIN_SIGNED) or (interpreted == MAX_UNSIGNED)):
+      displaydata = None
+    else:
+      ## put the data with correct formatting into the data table
+      if format == 'FIX3':
+        displaydata = float(interpreted) / 1000
+      elif format == 'FIX2':
+        displaydata = float(interpreted) / 100
+      elif format == 'FIX1':
+        displaydata = float(interpreted) / 10
+      else:
+        displaydata = interpreted
+    
+    #print '************** %s = %s' % (name, str(displaydata))
+    inverter[name] = displaydata
+  
+  # Add timestamp
+  inverter["00000 - Timestamp"] = str(datetime.datetime.now()).partition('.')[0]
+  return True
 
 def publish_influx(metrics):
   target=flux_client.write_points([metrics])
@@ -194,12 +263,15 @@ def publish_mqtt(inverter):
 while True:
   try:
     inverter = {}
+    measurement = "Default"
+    ret = False
     
     if 'sungrow-' in config.model:
+      measurement = "Sungrow"
       for i in bus['read']:
-        load_registers("read",i['start'],i['range']) 
+        ret = load_registers("read",i['start'],i['range']) 
       for i in bus['holding']:
-        load_registers("holding",i['start'],i['range']) 
+        ret = load_registers("holding",i['start'],i['range']) 
       
       # Sungrow inverter specifics:
       # Work out if the grid power is being imported or exported
@@ -216,25 +288,36 @@ while True:
             inverter['second'])
     
     if 'sma-' in config.model:
-      load_sma_register(modmap.sma_registers)
+      measurement = "SMA"
+      ret = load_sma_register(modmap.sma_registers)
+
+    if 'schneider-' in config.model:
+      measurement = "Schneider"
+      ret = load_schneider_register(modmap.schneider_registers)
     
-    print (inverter)
+    print ("Inverter Data: %s" % inverter)
+    # time.sleep(config.scan_interval)
+    # continue
+
+    if not ret:
+      print("Something went wrong with modbus comms, bailing...")
+      break
 
     if mqtt_client is not None:
-      t = Thread(target=publish_mqtt, args=(inverter,))
+      t = Thread(target=publish_mqtt, args=(inverter,), name="MQTT")
       t.start()
 
-    t = Thread(target=publish_dweepy, args=(inverter,))
+    t = Thread(target=publish_dweepy, args=(inverter,), name="DWEEPY")
     t.start()
     if flux_client is not None:
       metrics = {}
       tags = {}
       fields = {}
-      metrics['measurement'] = "Sungrow"
-      tags['location'] = "Gabba"
+      metrics['measurement'] = measurement
+      tags['location'] = "MiCasa"
       metrics['tags'] = tags
       metrics['fields'] = inverter
-      t = Thread(target=publish_influx, args=(metrics,))
+      t = Thread(target=publish_influx, args=(metrics,), name="INFLUX")
       t.start()
 
   except Exception as err:
