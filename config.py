@@ -12,8 +12,8 @@ scan_interval = 10
 # Optional:
 influxdb_ip = "192.168.1.5"
 influxdb_port = 8086
-influxdb_user = "admin"
-influxdb_password = "admin"
+influxdb_user = ""
+influxdb_password = ""
 influxdb_database = "schneider"
 influxdb_ssl = False
 influxdb_verify_ssl = False
