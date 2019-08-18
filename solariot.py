@@ -183,6 +183,7 @@ def load_schneider_register(registers):
 
   ## request each register from datasets, omit first row which contains only column headers
   for thisrow in registers:
+    interpreted = None
     name = thisrow[0]
     startPos = thisrow[1]
     type = thisrow[2]
@@ -191,51 +192,56 @@ def load_schneider_register(registers):
     
     ## if the connection is somehow not possible (e.g. target not responding)
     #  show a error message instead of excepting and stopping
-    
-    try:
-      received = client.read_holding_registers(address=startPos,
-                                             count=schneider_moddatatype[type],
-                                              unit=config.slave)
-    except:
-      thisdate = str(datetime.datetime.now()).partition('.')[0]
-      thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
-      print( thiserrormessage)
-      return False ## prevent further execution of this function
-    
-    message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Little)
-    ## provide the correct result depending on the defined datatype
-    if type == 'S32':
-      interpreted = message.decode_32bit_int()
-    elif type == 'U32':
-      interpreted = message.decode_32bit_uint()
-    elif type == 'U64':
-      interpreted = message.decode_64bit_uint()
-    elif type == 'STR16':
-      interpreted = message.decode_string(16)
-    elif type == 'STR32':
-      interpreted = message.decode_string(32)
-    elif type == 'S16':
-      interpreted = message.decode_16bit_int()
-    elif type == 'U16':
-      interpreted = message.decode_16bit_uint()
-    else: ## if no data type is defined do raw interpretation of the delivered data
-      interpreted = message.decode_16bit_uint()
-    
-    ## check for "None" data before doing anything else
-    if ((interpreted == MIN_SIGNED) or (interpreted == MAX_UNSIGNED)):
-      displaydata = None
-    else:
-      ## put the data with correct formatting into the data table
-      if format == 'FIX3':
-        displaydata = float(interpreted) / 1000
-      elif format == 'FIX2':
-        displaydata = float(interpreted) / 100
-      elif format == 'FIX1':
-        displaydata = float(interpreted) / 10
+    for slave in slaves:
+      try:
+        received = client.read_holding_registers(address=startPos,
+                                               count=schneider_moddatatype[type],
+                                                unit=slave)
+      except:
+        thisdate = str(datetime.datetime.now()).partition('.')[0]
+        thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
+        print( thiserrormessage)
+        return False ## prevent further execution of this function
+      
+      message = BinaryPayloadDecoder.fromRegisters(received.registers, 
+                                                    byteorder=Endian.Big,
+                                                    wordorder=Endian.Little)
+      if not interpretted:
+        interpreted = 0
+
+      ## provide the correct result depending on the defined datatype
+      if type == 'S32':
+        interpreted += message.decode_32bit_int()
+      elif type == 'U32':
+        interpreted += message.decode_32bit_uint()
+      elif type == 'U64':
+        interpreted += message.decode_64bit_uint()
+      elif type == 'STR16':
+        interpreted += message.decode_string(16)
+      elif type == 'STR32':
+        interpreted += message.decode_string(32)
+      elif type == 'S16':
+        interpreted += message.decode_16bit_int()
+      elif type == 'U16':
+        interpreted += message.decode_16bit_uint()
+      else: ## if no data type is defined do raw interpretation of the delivered data
+        interpreted += message.decode_16bit_uint()
+      
+      ## check for "None" data before doing anything else
+      if ((interpreted == MIN_SIGNED) or (interpreted == MAX_UNSIGNED)):
+        displaydata = None
       else:
-        displaydata = interpreted
-    
-    #print '************** %s = %s' % (name, str(displaydata))
+        ## put the data with correct formatting into the data table
+        if format == 'FIX3':
+          displaydata = float(interpreted) / 1000
+        elif format == 'FIX2':
+          displaydata = float(interpreted) / 100
+        elif format == 'FIX1':
+          displaydata = float(interpreted) / 10
+        else:
+          displaydata = interpreted
+      
+      #print '************** %s = %s' % (name, str(displaydata))
     inverter[name] = displaydata
   
   # Add timestamp
@@ -296,8 +302,6 @@ while True:
       ret = load_schneider_register(modmap.schneider_registers)
     
     print ("Inverter Data: %s" % inverter)
-    # time.sleep(config.scan_interval)
-    # continue
 
     if not ret:
       print("Something went wrong with modbus comms, bailing...")

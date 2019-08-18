@@ -3,7 +3,7 @@ inverter_port = 502
 # Slave Defaults
 # Sungrow: 0x01
 # SMA: 3
-slave = 170
+slaves = [170,171]
 model = "schneider-mppt80-600"
 timeout = 3
 scan_interval = 10
