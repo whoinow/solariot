@@ -192,7 +192,7 @@ def load_schneider_register(registers):
     
     ## if the connection is somehow not possible (e.g. target not responding)
     #  show a error message instead of excepting and stopping
-    for slave in slaves:
+    for slave in config.slaves:
       try:
         received = client.read_holding_registers(address=startPos,
                                                count=schneider_moddatatype[type],
