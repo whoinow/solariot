@@ -206,7 +206,7 @@ def load_schneider_register(registers):
       message = BinaryPayloadDecoder.fromRegisters(received.registers, 
                                                     byteorder=Endian.Big,
                                                     wordorder=Endian.Little)
-      if not interpretted:
+      if not interpreted:
         interpreted = 0
 
       ## provide the correct result depending on the defined datatype
