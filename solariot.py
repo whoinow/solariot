@@ -193,7 +193,7 @@ def load_schneider_register(registers):
     ## if the connection is somehow not possible (e.g. target not responding)
     #  show a error message instead of excepting and stopping
     counter = 1
-    last_displaydata = 0
+    total_displaydata = 0
 
     for slave in config.slaves:
       try:
@@ -247,7 +247,7 @@ def load_schneider_register(registers):
       if counter <= len(config.slaves):
         total_displaydata += displaydata
 
-      counter++
+      counter += 1
     #print '************** %s = %s' % (name, str(displaydata))
     inverter[name] = total_displaydata
   
