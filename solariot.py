@@ -192,6 +192,9 @@ def load_schneider_register(registers):
     
     ## if the connection is somehow not possible (e.g. target not responding)
     #  show a error message instead of excepting and stopping
+    counter = 1
+    last_displaydata = 0
+
     for slave in config.slaves:
       try:
         received = client.read_holding_registers(address=startPos,
@@ -206,26 +209,24 @@ def load_schneider_register(registers):
       message = BinaryPayloadDecoder.fromRegisters(received.registers, 
                                                     byteorder=Endian.Big,
                                                     wordorder=Endian.Little)
-      if not interpreted:
-        interpreted = 0
 
       ## provide the correct result depending on the defined datatype
       if type == 'S32':
-        interpreted += message.decode_32bit_int()
+        interpreted = message.decode_32bit_int()
       elif type == 'U32':
-        interpreted += message.decode_32bit_uint()
+        interpreted = message.decode_32bit_uint()
       elif type == 'U64':
-        interpreted += message.decode_64bit_uint()
+        interpreted = message.decode_64bit_uint()
       elif type == 'STR16':
-        interpreted += message.decode_string(16)
+        interpreted = message.decode_string(16)
       elif type == 'STR32':
-        interpreted += message.decode_string(32)
+        interpreted = message.decode_string(32)
       elif type == 'S16':
-        interpreted += message.decode_16bit_int()
+        interpreted = message.decode_16bit_int()
       elif type == 'U16':
-        interpreted += message.decode_16bit_uint()
+        interpreted = message.decode_16bit_uint()
       else: ## if no data type is defined do raw interpretation of the delivered data
-        interpreted += message.decode_16bit_uint()
+        interpreted = message.decode_16bit_uint()
       
       ## check for "None" data before doing anything else
       if ((interpreted == MIN_SIGNED) or (interpreted == MAX_UNSIGNED)):
@@ -240,9 +241,15 @@ def load_schneider_register(registers):
           displaydata = float(interpreted) / 10
         else:
           displaydata = interpreted
-      
-      #print '************** %s = %s' % (name, str(displaydata))
-    inverter[name] = displaydata
+
+      inverter[f"{name} (PV{counter})"] = displaydata
+
+      if counter <= len(config.slaves):
+        total_displaydata += displaydata
+
+      counter++
+    #print '************** %s = %s' % (name, str(displaydata))
+    inverter[name] = total_displaydata
   
   # Add timestamp
   inverter["00000 - Timestamp"] = str(datetime.datetime.now()).partition('.')[0]
