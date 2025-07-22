@@ -242,8 +242,8 @@ def load_schneider_register(registers):
         else:
           displaydata = interpreted
 
-      inverter[f"{name} (PV{counter})"] = displaydata
-
+      inverter[name + " (PV" + str(counter) + ")"] = displaydata
+      #inverter[f"{name} (PV{counter})"] = displaydata
       if counter <= len(config.slaves):
         total_displaydata += displaydata
 
