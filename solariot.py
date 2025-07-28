@@ -208,7 +208,7 @@ def load_schneider_register(registers):
       
       message = BinaryPayloadDecoder.fromRegisters(received.registers, 
                                                     byteorder=Endian.Big,
-                                                    wordorder=Endian.Little)
+                                                    wordorder=Endian.Big)
 
       ## provide the correct result depending on the defined datatype
       if type == 'S32':
