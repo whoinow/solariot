@@ -1,5 +1,5 @@
 inverter_ip = "192.168.1.18"
-inverter_port = 503
+inverter_port = 502
 # Slave Defaults
 # Sungrow: 0x01
 # SMA: 3
