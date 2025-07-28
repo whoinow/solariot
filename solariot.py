@@ -312,7 +312,7 @@ while True:
 
     if not ret:
       print("Something went wrong with modbus comms, bailing...")
-      break
+      continue
 
     if mqtt_client is not None:
       t = Thread(target=publish_mqtt, args=(inverter,), name="MQTT")
